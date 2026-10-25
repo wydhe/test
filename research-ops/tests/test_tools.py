@@ -5,6 +5,7 @@
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -171,6 +172,17 @@ class TestLifecycle(GpuqCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertEqual(self.jobs(), {})
 
+    def test_rejects_backgrounded_or_gpu_pinned_commands(self):
+        for cmd in ("nohup python train.py", "python train.py > log.txt 2>&1 &",
+                    "python a.py & python b.py", "CUDA_VISIBLE_DEVICES=0 python train.py"):
+            r = subprocess.run(GPUQ + ["submit", "-n", "bad", "-m", "5", "--", cmd], env=self.env,
+                               cwd=self.dir, capture_output=True, text=True)
+            self.assertNotEqual(r.returncode, 0, cmd)
+        for cmd in ("python train.py > log.txt 2>&1", "cd src && python train.py && echo ok",
+                    "python train.py &> log.txt"):
+            self.submit("good", 5, cmd)
+        self.assertEqual(len(list((self.dir / ".gpuq" / "jobs").glob("j*.json"))), 3)
+
     def test_cancel_running_job(self):
         self.submit("long", 5, "sleep 60")
         self.q("once")
@@ -211,6 +223,38 @@ class TestLifecycle(GpuqCase):
         self.assertIn("busy", self.q("status", "--line"))
         self.run_until_final()
         self.assertIn("E3", self.q("report", "--days", "1"))
+
+
+class TestSnapshot(unittest.TestCase):
+    def test_snapshot_collects_logs_results_commands_and_args(self):
+        import shutil
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, home = Path(tmp) / "proj", Path(tmp) / "home"
+            shutil.copytree(TOOLS, proj / "tools")
+            (proj / "logs").mkdir(parents=True)
+            (proj / "logs" / "train_a.log").write_text("epoch 1 step=10 loss=0.9 val_dice=0.70\n" * 5)
+            (proj / "outputs" / "exp1").mkdir(parents=True)
+            (proj / "outputs" / "exp1" / "eval_results.json").write_text(json.dumps({"dice": 0.91, "hd95": 3.2}))
+            (proj / "scripts").mkdir()
+            (proj / "scripts" / "train.py").write_text(
+                "p.add_argument('--budget', type=int, default=10)\np.add_argument('--seed', default=0)\n")
+            tdir = home / ".claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(proj.resolve()))
+            tdir.mkdir(parents=True)
+            rec = {"timestamp": "2026-10-24T10:00:00Z", "message": {"content": [
+                {"type": "tool_use", "name": "Bash", "input": {"command": "nohup python scripts/train.py --budget 2 > logs/a.log 2>&1 &"}},
+                {"type": "tool_use", "name": "Bash", "input": {"command": "ls outputs"}}]}}
+            (tdir / "s.jsonl").write_text(json.dumps(rec) + "\n")
+            env = dict(os.environ, HOME=str(home), GPUQ_FAKE_GPUS="4x80")
+            r = subprocess.run(["bash", str(proj / "tools" / "snapshot.sh"), "24"], env=env,
+                               capture_output=True, text=True, timeout=120)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            snap = (proj / "research" / "snapshot.md").read_text()
+            self.assertIn("val_dice", snap)
+            self.assertIn("eval_results.json: dice=0.91 hd95=3.2", snap)
+            self.assertIn("python scripts/train.py --budget 2", snap)
+            self.assertNotIn("`ls outputs`", snap)
+            self.assertIn("scripts/train.py: --budget=10 --seed=0", snap)
+            self.assertIn("outputs/exp1/", snap)
 
 
 class TestDigest(unittest.TestCase):

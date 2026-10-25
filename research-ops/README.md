@@ -56,10 +56,11 @@
 | `tools/status.sh` | 一屏状态（约 40 行） |
 | `tools/plan_section.sh` | 按节号读计划书，避免整篇读取 |
 | `tools/inventory.sh` | 一次性盘点已经在跑的项目（`/bootstrap` 用） |
+| `tools/snapshot.sh` | 把 GPU 状态、最近日志摘要、结果文件、Claude 执行过的实验命令、脚本参数压成一个 `research/snapshot.md`（不花 token，`/catchup` 用） |
 | `tools/session_context.sh` | SessionStart hook：自动注入记忆 |
 | `tools/statusline.sh` | Claude Code 状态栏：GPU / 队列 / INBOX，不花 token |
 | `tools/on_job_finish.sh` | 任务结束 hook：写 INBOX，可选通知或无人值守 triage |
-| `.claude/commands/*.md` | `/bootstrap` `/status` `/triage` `/next` `/handoff` `/weekly` `/review-packet` |
+| `.claude/commands/*.md` | `/bootstrap` `/catchup`（低额度一次性：看结果 + 排队）`/status` `/triage` `/next` `/handoff` `/weekly` `/review-packet` |
 | `.claude/agents/log-analyst.md` | 读日志的廉价子代理（Haiku） |
 | `.claude/settings.json` | hook、状态栏、免确认的只读工具权限、Bash 输出上限 |
 

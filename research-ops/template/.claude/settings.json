@@ -7,6 +7,7 @@
       "Bash(bash tools/status.sh:*)",
       "Bash(bash tools/plan_section.sh:*)",
       "Bash(bash tools/inventory.sh:*)",
+      "Bash(bash tools/snapshot.sh:*)",
       "Bash(python3 tools/gpuq.py:*)",
       "Bash(python3 tools/digest_log.py:*)",
       "Bash(python3 tools/results_table.py:*)",

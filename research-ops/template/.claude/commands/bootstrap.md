@@ -4,7 +4,7 @@ allowed-tools: Bash(bash tools/inventory.sh:*), Bash(bash tools/plan_section.sh:
 ---
 目标：用最少的 token 弄清「项目进行到哪一步、哪些结果好或坏、下一步做什么」。
 
-1. 运行 `bash tools/inventory.sh 168`（最近 7 天）。
+1. 若 `research/snapshot.md` 是今天生成的，直接读它，并跳过第 3 步的逐个 digest；否则运行 `bash tools/inventory.sh 168`（最近 7 天）。额度紧张时改用 `/catchup`。
 2. 运行 `bash tools/plan_section.sh --toc`，然后只读这几节：结论 / 贡献、实验矩阵、时间线与门槛、风险与对策。
 3. 对 inventory 里正在运行或最近更新的实验：日志不超过 8 个时，逐个运行 `python3 tools/digest_log.py <日志>`；更多时交给 `log-analyst` 子代理批量处理，让它返回一张表（路径、对应实验的猜测、进度、关键指标、异常）。已有 result 文件时用 results_table.py 汇总。
 4. 填写 `research/EXPERIMENTS.md`：每个已有实验一行，对应到计划编号（不确定写 `?`），写明状态（running / done / failed / unknown）、关键结果、是否达到计划门槛。

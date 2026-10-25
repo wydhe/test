@@ -27,7 +27,7 @@
 - 提交后**结束本回合**，不要 sleep / 轮询；结果会自动进 INBOX。
 
 ## 3. 省 token 硬规则
-1. 看全局：`bash tools/status.sh`（约 40 行）。看单个任务：`python3 tools/digest_log.py <jobid|日志路径>`。
+1. 看全局：`bash tools/status.sh`（约 40 行）。看单个任务：`python3 tools/digest_log.py <jobid|日志路径>`。全面盘点：读 `research/snapshot.md`（`bash tools/snapshot.sh` 生成），不要自己逐个找日志。
 2. **禁止** `cat` / 大段 `tail` / 整篇 Read 原始日志。日志细节交给 `log-analyst` 子代理，它只返回摘要。
 3. 多次运行汇总：`python3 tools/results_table.py --tag <E?>`，不要逐个读 result.json。
 4. 读代码：先 Grep 定位，再带 offset/limit 读；同一文件不重复读。

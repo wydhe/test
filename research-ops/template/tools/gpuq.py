@@ -472,10 +472,18 @@ def one_pass(verbose=False):
 
 # ---------------------------------------------------------------- commands
 
+BACKGROUND_RE = re.compile(r"\bnohup\b|\bsetsid\b|\bdisown\b|(?<![&>|])&(?![&>])")
+
+
 def new_job(cfg, cmd, name, mem, ngpu=1, exclusive=False, prio=0, tag="", note="", after=None,
             retries=None, cwd=None, env=None, cpus=None, only=None):
     if float(mem) <= 0 or int(ngpu) < 1:
         raise ValueError("mem must be > 0 and ngpu >= 1")
+    # A backgrounded command "finishes" at once and its GPU use becomes invisible to the queue.
+    if BACKGROUND_RE.search(cmd):
+        raise ValueError(f"{name}: remove nohup / setsid / '&' - gpuq already runs jobs detached and logs them")
+    if re.search(r"\bCUDA_VISIBLE_DEVICES\s*=", cmd):
+        raise ValueError(f"{name}: remove CUDA_VISIBLE_DEVICES - gpuq assigns GPUs itself")
     return {
         "id": None, "name": name, "cmd": cmd, "cwd": str(Path(cwd or os.getcwd()).resolve()),
         "mem": float(mem), "ngpu": int(ngpu), "exclusive": bool(exclusive), "prio": int(prio),
