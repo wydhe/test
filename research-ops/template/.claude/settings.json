@@ -1,0 +1,34 @@
+{
+  "env": {
+    "BASH_MAX_OUTPUT_LENGTH": "15000"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(bash tools/status.sh:*)",
+      "Bash(bash tools/plan_section.sh:*)",
+      "Bash(bash tools/inventory.sh:*)",
+      "Bash(python3 tools/gpuq.py:*)",
+      "Bash(python3 tools/digest_log.py:*)",
+      "Bash(python3 tools/results_table.py:*)",
+      "Bash(nvidia-smi:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash __PROJECT_DIR__/tools/session_context.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash __PROJECT_DIR__/tools/statusline.sh"
+  }
+}
