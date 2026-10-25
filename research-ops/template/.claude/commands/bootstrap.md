@@ -9,7 +9,7 @@ allowed-tools: Bash(bash tools/inventory.sh:*), Bash(bash tools/plan_section.sh:
 3. 对 inventory 里正在运行或最近更新的实验：日志不超过 8 个时，逐个运行 `python3 tools/digest_log.py <日志>`；更多时交给 `log-analyst` 子代理批量处理，让它返回一张表（路径、对应实验的猜测、进度、关键指标、异常）。已有 result 文件时用 results_table.py 汇总。
 4. 填写 `research/EXPERIMENTS.md`：每个已有实验一行，对应到计划编号（不确定写 `?`），写明状态（running / done / failed / unknown）、关键结果、是否达到计划门槛。
 5. 写 `research/STATE.md`：现在处于计划的第几周、哪个阶段；已过和未过的门槛；在跑什么（pid、预计结束时间）；最重要的 3 个风险；下一步 5 条。
-6. 若存在 `CLAUDE.research-ops.md`（安装时保留了旧 CLAUDE.md）：把旧文件中仍然有效的约定压缩进新版第 7 节（≤ 25 行），新版替换旧版。
+6. 合并旧约定：若存在 `CLAUDE.research-ops.md`（安装时保留了旧 CLAUDE.md），或 CLAUDE.md 第 7 节下有「旧 CLAUDE.md 内容」小节，把其中仍然有效的约定压缩进第 7 节（总共 ≤ 25 行），然后删除旧内容，让 CLAUDE.md 保持在 100 行以内。
 7. 正在跑的旧进程**不要动**（不 kill、不迁移）；从现在起新任务一律走 gpuq。
 8. 计划里发现的矛盾或风险（例如在 TEST 上做调参性质的评估）写进 STATE「待我决策」。
 9. 最后列出 ≤ 5 个需要我确认的问题（例如无法对应到计划的实验）。

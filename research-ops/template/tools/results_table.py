@@ -8,10 +8,12 @@ result.json (written by tools/rlog.py) looks like
     {"exp": "E3", "name": "B2-b10-s0", "seed": 0, "config": {...}, "metrics": {"dice": 0.91}}
 Files without a "metrics" key use their numeric top-level fields instead.
 Default grouping: run name with a trailing seed suffix (-s0, _seed1) removed.
+--root defaults to $RESULTS_ROOT, else runs/.
 """
 import argparse
 import json
 import math
+import os
 import re
 import sys
 from pathlib import Path
@@ -106,7 +108,7 @@ def render(groups, metrics, sort=None, csv=False):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--root", default="runs")
+    p.add_argument("--root", default=os.environ.get("RESULTS_ROOT", "runs"))
     p.add_argument("--glob", default="**/result.json")
     p.add_argument("--tag", help="keep results whose exp (or tags) equals this, e.g. E3")
     p.add_argument("--grep", help="keep runs whose name contains this text")

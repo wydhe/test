@@ -45,9 +45,14 @@ cut = time.time() - hours * 3600
 SKIP = {".git", ".gpuq", "__pycache__", "node_modules", ".ipynb_checkpoints", "data", "datasets", ".cache"}
 LOGS = (".log", ".out", ".err", ".txt", ".jsonl", ".json", ".csv", ".yaml", ".yml", ".npz")
 CKPT = (".pt", ".pth", ".ckpt", ".safetensors", ".bin")
-recent, code, ckpt = [], [], {}
+LIMIT = 300000  # network filesystems are slow; stop after this many files
+recent, code, ckpt, seen = [], [], {}, 0
 for d, dirs, files in os.walk(root):
     dirs[:] = [x for x in dirs if x not in SKIP and not x.startswith("wandb")]
+    seen += len(files)
+    if seen > LIMIT:
+        print(f"(scan stopped after {LIMIT} files; pass a narrower root to see the rest)")
+        break
     for f in files:
         p = os.path.join(d, f)
         try:
