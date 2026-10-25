@@ -137,8 +137,8 @@ def last_exception(lines):
 
 def digest(path, max_lines=25, keys=None):
     path = resolve(str(path))
-    if not path.exists():
-        return f"digest: {path} not found"
+    if not path.is_file():
+        return f"digest: {path} not found or not a file"
     text, partial = read_text(path)
     lines = split_lines(text)
     st = path.stat()

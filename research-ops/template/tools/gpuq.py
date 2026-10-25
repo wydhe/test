@@ -20,6 +20,7 @@ Commands (see `gpuq.py <cmd> -h`):
 """
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -28,6 +29,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import traceback
 from pathlib import Path
@@ -105,12 +107,18 @@ def project_dir(cfg):
     return Path(cfg.get("project_dir") or TOOLS_DIR.parent)
 
 
+def lock_path(kind):
+    """Lock files live on local disk: flock on network filesystems (NFS/EFS) is unreliable."""
+    key = hashlib.sha1(str(HOME.resolve()).encode()).hexdigest()[:12]
+    return Path(os.environ.get("GPUQ_LOCK_DIR") or tempfile.gettempdir()) / f"gpuq-{key}.{kind}.lock"
+
+
 class Lock:
     """Exclusive lock around every read-modify-write of the queue."""
 
     def __enter__(self):
         ensure_home()
-        self.f = open(HOME / "lock", "w")
+        self.f = open(lock_path("queue"), "a")
         fcntl.flock(self.f, fcntl.LOCK_EX)
         return self
 
@@ -153,14 +161,18 @@ def load_held():
     return json.loads(p.read_text()) if p.exists() else []
 
 
-def heartbeat_age():
-    p = HOME / "daemon.json"
-    if not p.exists():
-        return None
+def daemon_info():
+    """Last heartbeat: {"t", "pid", "host", "err"} or None."""
     try:
-        return now() - json.loads(p.read_text())["t"]
-    except (ValueError, KeyError, OSError):
+        info = json.loads((HOME / "daemon.json").read_text())
+        return info if "t" in info else None
+    except (ValueError, OSError):
         return None
+
+
+def heartbeat_age():
+    info = daemon_info()
+    return None if info is None else now() - info["t"]
 
 
 def read_tail(path, nbytes):
@@ -698,8 +710,9 @@ def cmd_status(a):
         view, _, _ = gpu_view(cfg, jobs, gpus, apps)
     except RuntimeError as e:
         view, gpu_err = {}, str(e)
-    age = heartbeat_age()
-    up = age is not None and age < 3 * cfg["poll_s"] + 30
+    info = daemon_info()
+    up = info is not None and now() - info["t"] < 3 * cfg["poll_s"] + 30
+    pass_err = info.get("err") if up else None
     running = [j for j in jobs if j["status"] == "running"]
     queued = [j for j in jobs if j["status"] == "queued"]
     ready = [j for j in queued if deps_state(j, by_id) is True]
@@ -709,10 +722,12 @@ def cmd_status(a):
 
     if a.line:
         print(f"GPU {busy}/{len(view)} busy · run {len(running)} · q {len(queued)} · "
-              f"fail24h {len(failed)} · gpuq {'ok' if up else 'DOWN'}")
+              f"fail24h {len(failed)} · gpuq {('ERR' if pass_err else 'ok') if up else 'DOWN'}")
         return
 
-    print(f"== {ts()} | daemon {'up' if up else 'DOWN (start: tmux new -d -s gpuq python3 tools/gpuq.py daemon)'}")
+    print(f"== {ts()} | daemon {'up' if up else 'DOWN (start: bash tools/start_gpuq.sh)'}")
+    if pass_err:
+        print(f"DAEMON ERROR: last scheduling pass failed: {pass_err} (see .gpuq/daemon.log)")
     if gpu_err:
         print("GPU: unavailable:", gpu_err)
     print("\n".join(gpu_lines(view, by_id)))
@@ -827,8 +842,12 @@ def cmd_hold(a):
 
 
 def cmd_daemon(a):
-    load_config()
-    lockf = open(HOME / "daemon.lock", "w")
+    cfg = load_config()
+    host = socket.gethostname()
+    info = daemon_info()
+    if info and info.get("host") not in (None, host) and now() - info["t"] < 3 * cfg["poll_s"] + 30:
+        sys.exit(f"gpuq: a daemon on host {info['host']} is using this queue; stop it first")
+    lockf = open(lock_path("daemon"), "a")
     try:
         fcntl.flock(lockf, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
@@ -836,14 +855,16 @@ def cmd_daemon(a):
     stop = []
     signal.signal(signal.SIGTERM, lambda *_: stop.append(1))
     signal.signal(signal.SIGINT, lambda *_: stop.append(1))
-    print(ts(), f"gpuq daemon pid {os.getpid()} home {HOME}", flush=True)
+    print(ts(), f"gpuq daemon pid {os.getpid()} home {HOME} python {sys.version.split()[0]}", flush=True)
     while not stop:
+        err = None
         try:
             one_pass(verbose=True)
-        except Exception:  # keep scheduling even if one pass hits a transient error
+        except Exception as e:  # keep scheduling even if one pass hits a transient error
             traceback.print_exc()
             sys.stdout.flush()
-        write_json(HOME / "daemon.json", {"t": now(), "pid": os.getpid()})
+            err = f"{type(e).__name__}: {e}"[:300]
+        write_json(HOME / "daemon.json", {"t": now(), "pid": os.getpid(), "host": host, "err": err})
         for _ in range(int(load_config()["poll_s"] * 2)):
             if stop:
                 break
@@ -875,7 +896,7 @@ def main():
     s.add_argument("--only", default="", help="restrict to these GPUs, e.g. 0,1")
     s.add_argument("--cwd", default=None)
     s.add_argument("-e", "--env", action="append", default=[], help="KEY=VALUE, repeatable")
-    s.add_argument("cmd", nargs=argparse.REMAINDER)
+    s.add_argument("cmd", nargs="*", help="the command, after a literal --")
 
     s = sub.add_parser("batch", help="queue jobs from a JSONL file ('-' = stdin)")
     s.add_argument("file")
@@ -915,7 +936,14 @@ def main():
     s = sub.add_parser("release", help="undo hold ('all' releases every GPU)")
     s.add_argument("gpus", nargs="+")
 
-    a = p.parse_args()
+    # Split "submit ... -- CMD" ourselves: argparse's handling of "--" differs between versions.
+    argv, tail = sys.argv[1:], None
+    if argv and argv[0] == "submit" and "--" in argv:
+        i = argv.index("--")
+        argv, tail = argv[:i], argv[i + 1:]
+    a = p.parse_args(argv)
+    if tail is not None:
+        a.cmd = tail
     if a.cmd_name == "init":
         ensure_home()
         print("gpuq home:", HOME)

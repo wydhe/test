@@ -183,6 +183,31 @@ class TestLifecycle(GpuqCase):
             self.submit("good", 5, cmd)
         self.assertEqual(len(list((self.dir / ".gpuq" / "jobs").glob("j*.json"))), 3)
 
+    def test_submit_keeps_everything_after_double_dash(self):
+        jid = self.q("submit", "-n", "flags", "-m", "5", "--", "python", "train.py", "--lr", "0.1", "--", "x").strip()
+        cmd = json.loads((self.dir / ".gpuq" / "jobs" / f"{jid}.json").read_text())["cmd"]
+        self.assertEqual(cmd, "python train.py --lr 0.1 -- x")
+
+    def test_daemon_reports_failing_passes(self):
+        self.set_config(poll_s=1)
+        env = dict(self.env, GPUQ_FAKE_GPUS="4xbroken")
+        d = subprocess.Popen(GPUQ + ["daemon"], env=env, cwd=self.dir,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            line = ""
+            for _ in range(30):
+                time.sleep(0.5)
+                r = subprocess.run(GPUQ + ["status", "--line"], env=self.env, cwd=self.dir,
+                                   capture_output=True, text=True)
+                line = r.stdout
+                if "ERR" in line:
+                    break
+            self.assertIn("gpuq ERR", line)
+            self.assertIn("DAEMON ERROR", self.q("status"))
+        finally:
+            d.terminate()
+            d.wait(timeout=10)
+
     def test_cancel_running_job(self):
         self.submit("long", 5, "sleep 60")
         self.q("once")
